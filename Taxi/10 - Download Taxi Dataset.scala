@@ -17,7 +17,9 @@
 val years = 2009 to 2017
 val months = (1 to 12).map(m => f"${m}%02d")
 
-val yearAndMonth = years.map(year => months.map(month => (year, month)))
+val yearAndMonth = years
+  .map(year => months.map(month => (year, month)))
+  .flatten
 
 // COMMAND ----------
 
@@ -30,16 +32,28 @@ val yearAndMonth = years.map(year => months.map(month => (year, month)))
 // COMMAND ----------
 
 sc
-  .parellize(yearAndMonth) // parallelize allows you to distribute a local datastructure to a RDD.
+  .parallelize(yearAndMonth) // parallelize allows you to distribute a local datastructure to a RDD.
   .foreach{case (year, month) => {
     import sys.process._
-    s"mkdir -p /dbfs/mnt/data/taxi/tripdata/yellow/year=$year/month=$monthPrefixed/" !! 
+    s"mkdir -p /dbfs/mnt/data/taxi/tripdata/yellow/year=$year/month=$month/" !! 
     
-    s"curl -o /dbfs/mnt/data/taxi/tripdata/yellow/year=$year/month=$monthPrefixed/yellow-$year-$monthPrefixed.csv https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_$year-$monthPrefixed.csv" !!
+    
+    s"curl -o /dbfs/mnt/data/taxi/tripdata/yellow/year=$year/month=$month/yellow-$year-$month.csv https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_$year-$month.csv" !!        
     
   }}
 
 // COMMAND ----------
 
-// MAGIC %sh
-// MAGIC ls -R /dbfs/mnt/data/
+// MAGIC %md
+// MAGIC 
+// MAGIC Let's quickly take a look at the directory structure.
+
+// COMMAND ----------
+
+// MAGIC %fs
+// MAGIC ls /mnt/data/taxi/tripdata/yellow/
+
+// COMMAND ----------
+
+// MAGIC %md
+// MAGIC We use a structure of `year=2017/month=02` because Spark (& Hive) interpretes this as a `virtual` column. This allows us to quickly only select part of the dataset, without having to go through all of your data.
