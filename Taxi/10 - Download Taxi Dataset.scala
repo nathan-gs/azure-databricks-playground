@@ -57,3 +57,18 @@ sc
 
 // MAGIC %md
 // MAGIC We use a structure of `year=2017/month=02` because Spark (& Hive) interpretes this as a `virtual` column. This allows us to quickly only select part of the dataset, without having to go through all of your data.
+
+// COMMAND ----------
+
+// MAGIC %md ##Download some reference data
+
+// COMMAND ----------
+
+// MAGIC %sh
+// MAGIC mkdir -p /dbfs/mnt/data/taxi/refdata/
+
+// COMMAND ----------
+
+// MAGIC %sh
+// MAGIC curl -o /dbfs/mnt/data/taxi/refdata/taxizonelookup.csv "https://s3.amazonaws.com/nyc-tlc/misc/taxi+_zone_lookup.csv" 
+// MAGIC curl -o /dbfs/mnt/data/taxi/refdata/taxizones.zip "https://s3.amazonaws.com/nyc-tlc/misc/taxi_zones.zip"
