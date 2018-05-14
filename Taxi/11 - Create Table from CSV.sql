@@ -75,6 +75,25 @@ SELECT * FROM tmp_taxi_tripdata_yellow LIMIT 20
 
 -- COMMAND ----------
 
+-- MAGIC %md ##Import referencedata for location
+
+-- COMMAND ----------
+
+
+CREATE TABLE taxi_tripdata_zones
+USING csv
+OPTIONS (path "/mnt/data/taxi/refdata/taxizonelookup.csv", header "true", inferSchema "true") 
+
+-- COMMAND ----------
+
+SELECT * FROM taxi_tripdata_zones LIMIT 1
+
+-- COMMAND ----------
+
+-- MAGIC %md ##Import actual trip data and create view to combine all different datasets
+
+-- COMMAND ----------
+
 DROP TABLE taxi_tripdata_yellow_csv_pre2015; 
 
 CREATE TABLE taxi_tripdata_yellow_csv_pre2015
@@ -107,7 +126,11 @@ OPTIONS (path "/mnt/data/taxi/tripdata/yellow/yellow_pre2018/", header "true", i
 
 -- COMMAND ----------
 
-SELECT * FROM taxi_tripdata_yellow_csv_pre2015 LIMIT 20
+describe taxi_tripdata_yellow_csv_pre2017
+
+-- COMMAND ----------
+
+SELECT * FROM taxi_tripdata_yellow_csv_pre2017 LIMIT 20
 
 -- COMMAND ----------
 
@@ -196,29 +219,31 @@ SELECT * FROM taxi_tripdata_yellow_csv_pre2016h2 LIMIT 1
 
 -- COMMAND ----------
 
-CREATE TEMPORARY VIEW taxi_tripdata_yellow_csv (Vendor, tpep_pickup_datetime, tpep_dropoff_datetime, passenger_count, trip_distance, Ratecode, store_and_fwd_flag, PULocationID, DOLocationID, pickup_longitude, pickup_latitude, dropoff_longitude, dropoff_latitude, PaymentType, fare_amount, extra, mta_tax, tip_amount, tolls_amount, improvement_surcharge, total_amount, year, month) 
+CREATE OR REPLACE VIEW taxi_tripdata_yellow_csv (Vendor, PickupDateTime, DropOffDateTime, PassengerCount, TripDistance, RateCode, StoreAndFwdFlag, PickupBorough, PickupZone, DropOffBorough, DropOffZone, PickupLongitude, PickupLatitude, DropOffLongitude, DropOffLatitude, PaymentType, FareAmount, ExtraAmount, MTATax, TipAmount, TollAmount, ImprovementSurcharge, TotalAmount, year, month) 
 AS
-  SELECT t.vendor_name,
-         t.Trip_Pickup_DateTime,
-         t.Trip_Dropoff_DateTime,
-         t.passenger_count,
-         t.trip_distance,
+    SELECT t.vendor_name,
+         CAST(t.Trip_Pickup_DateTime as timestamp),
+         CAST(t.Trip_Dropoff_DateTime as timestamp),
+         CAST(t.passenger_count as int),
+         CAST(t.trip_distance as double),
          r.RateCode,
          t.store_and_forward,
+         NULL AS PickupBorough,
+         NULL AS PickupZone,
+         NULL AS DropOffBorough,
+         NULL AS DropOffZone,
+         CAST(t.Start_Lon as double),
+         CAST(t.Start_Lat as double),
+         CAST(t.End_Lon as double),
+         CAST(t.End_Lat as double),
+         CASE WHEN p.PaymentType IS NULL THEN 'Unknown' ELSE p.PaymentType END AS PaymentType,
+         CAST(t.fare_amt as double),
+         CAST(t.surcharge as double),
+         CAST(t.mta_tax as double),
+         CAST(t.tip_amt as double),
+         CAST(t.tolls_amt as double),
          NULL,
-         NULL,
-         t.Start_Lon,
-         t.Start_Lat,
-         t.End_Lon,
-         t.End_Lat,
-         p.PaymentType,
-         t.fare_amt,
-         t.surcharge,
-         t.mta_tax,
-         t.tip_amt,
-         t.tolls_amt,
-         NULL,
-         t.total_amt,
+         CAST(t.total_amt as double),
          t.year,
          t.month
   FROM taxi_tripdata_yellow_csv_pre2015 t
@@ -226,26 +251,28 @@ AS
   LEFT JOIN rate_codes r ON t.rate_code = r.RateCodeID
 UNION ALL
   SELECT t.VendorID,
-         t.tpep_pickup_datetime,
-         t.tpep_dropoff_datetime,
-         t.passenger_count,
-         t.trip_distance,
+         CAST(t.tpep_pickup_datetime AS timestamp),
+         CAST(t.tpep_dropoff_datetime AS timestamp),
+         CAST(t.passenger_count as int),
+         CAST(t.trip_distance as double),
          r.RateCode,
          t.store_and_fwd_flag,
-         NULL,
-         NULL,
-         t.pickup_longitude,
-         t.pickup_latitude,
-         t.dropoff_longitude,
-         t.dropoff_latitude,
-         p.PaymentType,
-         t.fare_amount,
-         t.extra,
-         t.mta_tax,
-         t.tip_amount,
-         t.tolls_amount,
-         t.improvement_surcharge,
-         t.total_amount,
+         NULL AS PickupBorough,
+         NULL AS PickupZone,
+         NULL AS DropOffBorough,
+         NULL AS DropOffZone,
+         CAST(t.pickup_longitude as double),
+         CAST(t.pickup_latitude as double),
+         CAST(t.dropoff_longitude as double),
+         CAST(t.dropoff_latitude as double),
+         CASE WHEN p.PaymentType IS NULL THEN 'Unknown' ELSE p.PaymentType END AS PaymentType,
+         CAST(t.fare_amount as double),
+         CAST(t.extra as double),
+         CAST(t.mta_tax as double),
+         CAST(t.tip_amount as double),
+         CAST(t.tolls_amount as double),
+         CAST(t.improvement_surcharge as double),
+         CAST(t.total_amount as double),
          t.year,
          t.month
   FROM taxi_tripdata_yellow_csv_pre2016h2 t
@@ -253,67 +280,75 @@ UNION ALL
   LEFT JOIN rate_codes r ON t.RateCodeID = r.RateCodeID
 UNION ALL
   SELECT v.VendorName,
-         t.tpep_pickup_datetime,
-         t.tpep_dropoff_datetime,
-         t.passenger_count,
-         t.trip_distance,
+         CAST(t.tpep_pickup_datetime AS timestamp),
+         CAST(t.tpep_dropoff_datetime AS timestamp),
+         CAST(t.passenger_count as int),
+         CAST(t.trip_distance as double),
          r.RateCode,
          t.store_and_fwd_flag,
-         PULocationID,
-         DOLocationID,
+         pz.Borough,
+         pz.Zone,
+         dz.Borough,
+         dz.Zone,
          NULL,
          NULL,
          NULL,
          NULL,
-         p.PaymentType,
-         t.fare_amount,
-         t.extra,
-         t.mta_tax,
-         t.tip_amount,
-         t.tolls_amount,
-         t.improvement_surcharge,
-         t.total_amount,
+         CASE WHEN p.PaymentType IS NULL THEN 'Unknown' ELSE p.PaymentType END AS PaymentType,
+         CAST(t.fare_amount as double),
+         CAST(t.extra as double),
+         CAST(t.mta_tax as double),
+         CAST(t.tip_amount as double),
+         CAST(t.tolls_amount as double),
+         CAST(t.improvement_surcharge as double),
+         CAST(t.total_amount as double),
          t.year,
          t.month
   FROM taxi_tripdata_yellow_csv_pre2017 t
   LEFT JOIN vendors v ON t.VendorID = v.VendorID
   LEFT JOIN payment_types p ON t.payment_type = p.Payment_Type
   LEFT JOIN rate_codes r ON t.RateCodeID = r.RateCodeID
+  LEFT JOIN taxi_tripdata_zones pz ON t.PULocationID = pz.LocationID
+  LEFT JOIN taxi_tripdata_zones dz ON t.DOLocationID = dz.LocationID
 UNION ALL
   SELECT v.VendorName,
-         t.tpep_pickup_datetime,
-         t.tpep_dropoff_datetime,
-         t.passenger_count,
-         t.trip_distance,
+         CAST(t.tpep_pickup_datetime AS timestamp),
+         CAST(t.tpep_dropoff_datetime AS timestamp),
+         CAST(t.passenger_count as int),
+         CAST(t.trip_distance as double),
          r.RateCode,
          t.store_and_fwd_flag,
-         PULocationID,
-         DOLocationID,
+         pz.Borough,
+         pz.Zone,
+         dz.Borough,
+         dz.Zone,
          NULL,
          NULL,
          NULL,
          NULL,
-         p.PaymentType,
-         t.fare_amount,
-         t.extra,
-         t.mta_tax,
-         t.tip_amount,
-         t.tolls_amount,
-         t.improvement_surcharge,
-         t.total_amount,
+         CASE WHEN p.PaymentType IS NULL THEN 'Unknown' ELSE p.PaymentType END AS PaymentType,
+         CAST(t.fare_amount as double),
+         CAST(t.extra as double),
+         CAST(t.mta_tax as double),
+         CAST(t.tip_amount as double),
+         CAST(t.tolls_amount as double),
+         CAST(t.improvement_surcharge as double),
+         CAST(t.total_amount as double),
          t.year,
          t.month
   FROM taxi_tripdata_yellow_csv_pre2018 t
   LEFT JOIN vendors v ON t.VendorID = v.VendorID
   LEFT JOIN payment_types p ON t.payment_type = p.Payment_Type
-  LEFT JOIN rate_codes r ON t.RateCodeID = r.RateCodeID;
+  LEFT JOIN rate_codes r ON t.RateCodeID = r.RateCodeID
+  LEFT JOIN taxi_tripdata_zones pz ON t.PULocationID = pz.LocationID
+  LEFT JOIN taxi_tripdata_zones dz ON t.DOLocationID = dz.LocationID;
 
 
 -- COMMAND ----------
 
-SELECT Vendor, COUNT(*) 
-FROM taxi_tripdata_yellow_csv
-GROUP BY Vendor
+SELECT *
+FROM taxi_tripdata_yellow_csv LIMIT 10
+
 
 -- COMMAND ----------
 
@@ -321,7 +356,7 @@ DESCRIBE taxi_tripdata_yellow_csv
 
 -- COMMAND ----------
 
-show partitions taxi_tripdata_yellow_csv_pre2018;
+show partitions taxi_tripdata_yellow_csv
 
 -- COMMAND ----------
 
