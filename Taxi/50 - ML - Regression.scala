@@ -10,11 +10,6 @@
 
 // COMMAND ----------
 
-// MAGIC %sh
-// MAGIC df -h
-
-// COMMAND ----------
-
 // MAGIC %md
 // MAGIC 
 // MAGIC ```
@@ -167,9 +162,7 @@ display(pipelineWithoutModel.fit(training.limit(20)).transform(training.limit(10
 
 // COMMAND ----------
 
-import org.apache.spark.ml.{Pipeline, PipelineStage}
-
-val steps:Array[PipelineStage] = Array(timeAndDateTransformer, rateCodeIndexer, paymentTypeIndexer, assembler, rfModel)
+val steps:Array[PipelineStage] = stepsWithoutModel :+ rfModel
 
 val pipeline = new Pipeline().setStages(steps)
 
@@ -185,7 +178,54 @@ display(training)
 
 // COMMAND ----------
 
-val pipelineFitted = pipeline.fit(training)
+val model = pipeline.fit(training)
+
+// COMMAND ----------
+
+
+
+// COMMAND ----------
+
+
+val modelTested = model.transform(test)
+modelTested.createTempView("model_regression_rf_test")
+
+display(modelTested)
+
+// COMMAND ----------
+
+val rfAppliedModel = model.stages.last.asInstanceOf[org.apache.spark.ml.regression.RandomForestRegressionModel]
+
+// COMMAND ----------
+
+rfAppliedModel.toDebugString
+
+// COMMAND ----------
+
+// Print the coefficients and intercept for linear regression
+println(s"Coefficients: ${model.coefficients} Intercept: ${model.intercept}")
+
+// Summarize the model over the training set and print out some metrics
+val trainingSummary = model.summary
+println(s"numIterations: ${trainingSummary.totalIterations}")
+println(s"objectiveHistory: [${trainingSummary.objectiveHistory.mkString(",")}]")
+trainingSummary.residuals.show()
+println(s"RMSE: ${trainingSummary.rootMeanSquaredError}")
+println(s"r2: ${trainingSummary.r2}")
+
+// COMMAND ----------
+
+model.toDebugString
+
+// COMMAND ----------
+
+display(model, test, plotType="ROC")
+
+// COMMAND ----------
+
+// MAGIC %md
+// MAGIC 
+// MAGIC ### Finding the best model, and tuning our parameters
 
 // COMMAND ----------
 
