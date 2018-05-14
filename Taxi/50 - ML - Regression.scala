@@ -183,10 +183,6 @@ val model = pipeline.fit(training)
 // COMMAND ----------
 
 
-
-// COMMAND ----------
-
-
 val modelTested = model.transform(test)
 modelTested.createTempView("model_regression_rf_test")
 
@@ -202,67 +198,46 @@ rfAppliedModel.toDebugString
 
 // COMMAND ----------
 
-// Print the coefficients and intercept for linear regression
-println(s"Coefficients: ${model.coefficients} Intercept: ${model.intercept}")
-
-// Summarize the model over the training set and print out some metrics
-val trainingSummary = model.summary
-println(s"numIterations: ${trainingSummary.totalIterations}")
-println(s"objectiveHistory: [${trainingSummary.objectiveHistory.mkString(",")}]")
-trainingSummary.residuals.show()
-println(s"RMSE: ${trainingSummary.rootMeanSquaredError}")
-println(s"r2: ${trainingSummary.r2}")
+val weekDays = Seq(("Monday",2), ("Tuesday", 3), ("Wednesday", 4), ("Thursday", 5), ("Friday", 6), ("Saturday", 7), ("Sunday", 1))
+dbutils.widgets.removeAll()
+dbutils.widgets.dropdown("timeOfDay", "0", (0 to 23).map(_.toString), "Hour")
+dbutils.widgets.dropdown("dayOfWeek", "Friday", weekDays.map(_._1), "Day Of Week")
+dbutils.widgets.text("passengers", "1", "Passengers")
+dbutils.widgets.text("fareAmount", "27", "Fare Amount")
+dbutils.widgets.text("distance", "4.5", "Distance")
+dbutils.widgets.dropdown("paymentType", "Cash", Seq("Cash", "Credit card"), "Payment Type")
 
 // COMMAND ----------
 
-model.toDebugString
 
-// COMMAND ----------
-
-display(model, test, plotType="ROC")
 
 // COMMAND ----------
 
 // MAGIC %md
 // MAGIC 
-// MAGIC ### Finding the best model, and tuning our parameters
+// MAGIC ## Let's see this in action
 
 // COMMAND ----------
 
-import org.apache.spark.ml.tuning.{ParamGridBuilder, CrossValidator}
+val hourOfDay = dbutils.widgets.get("timeOfDay").toInt
+val dayOfWeek = weekDays.find(_._1 == dbutils.widgets.get("dayOfWeek")).get._2
+val passengers = dbutils.widgets.get("passengers").toInt
+val distance = dbutils.widgets.get("distance").toDouble
+val fareAmount = dbutils.widgets.get("fareAmount").toDouble
+val rateCode = "Standard rate"
+val paymentType = dbutils.widgets.get("paymentType")
 
-import org.apache.spark.ml.evaluation.RegressionEvaluator
+println(dayOfWeek)
 
-val paramGrid = new ParamGridBuilder()
-  .addGrid(rfModel.maxDepth, Array(5, 10))
-  .addGrid(rfModel.numTrees, Array(20, 60))
-  .build()
+val date = s"2018-04-$dayOfWeek $hourOfDay:00:00"
 
-val cv = new CrossValidator() // you can feel free to change the number of folds used in cross validation as well
-  .setEstimator(pipeline) // the estimator can also just be an individual model rather than a pipeline
-  .setEstimatorParamMaps(paramGrid)
-  .setEvaluator(new RegressionEvaluator().setLabelCol("TipAmount"))
+val predictionFor = model
+  .transform(
+    sc
+    .makeRDD(Seq((date, passengers, distance, fareAmount, rateCode, paymentType)))
+    .toDF("PickupDateTime", "PassengerCount", "TripDistance", "FareAmount", "RateCode", "PaymentType"))
 
-val pipelineFitted = cv.fit(training)
-
-// COMMAND ----------
-
-println("The Best Parameters:\n--------------------")
-println(pipelineFitted.bestModel.asInstanceOf[org.apache.spark.ml.PipelineModel].stages(0))
-pipelineFitted
-  .bestModel.asInstanceOf[org.apache.spark.ml.PipelineModel]
-  .stages(0)
-  .extractParamMap
+display(predictionFor.select("PaymentType", "FareAmount", "prediction"))
 
 // COMMAND ----------
 
-val transformTest = pipelineFitted
-  .transform(test)
-  /*.selectExpr("prediction as raw_prediction", 
-    "double(round(prediction)) as prediction", 
-    "count", 
-    """CASE double(round(prediction)) = count 
-  WHEN true then 1
-  ELSE 0
-END as equal""")*/
-display(transformTest.limit(5))
