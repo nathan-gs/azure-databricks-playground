@@ -216,6 +216,8 @@ dbutils.widgets.dropdown("paymentType", "Cash", Seq("Cash", "Credit card"), "Pay
 // MAGIC %md
 // MAGIC 
 // MAGIC ## Let's see this in action
+// MAGIC 
+// MAGIC You can add any note here.
 
 // COMMAND ----------
 
