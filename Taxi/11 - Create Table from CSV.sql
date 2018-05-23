@@ -10,11 +10,6 @@
 
 -- COMMAND ----------
 
--- MAGIC %fs
--- MAGIC head /mnt/data/taxi/tripdata/yellow/year=2014/month=06/yellow-2014-06.csv
-
--- COMMAND ----------
-
 -- MAGIC %sh
 -- MAGIC mkdir -p /dbfs/mnt/data/taxi/tripdata/yellow/yellow_pre2015
 -- MAGIC mv /dbfs/mnt/data/taxi/tripdata/yellow/year=20{09,10,11,12,13,14}/ /dbfs/mnt/data/taxi/tripdata/yellow/yellow_pre2015
@@ -56,7 +51,17 @@
 
 -- COMMAND ----------
 
+-- MAGIC %md
+-- MAGIC ### First job in any data project is exploring the data
+
+-- COMMAND ----------
+
 DROP TABLE tmp_taxi_tripdata_yellow
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ### Take a single file and get an idea what data in there and how it's structured
 
 -- COMMAND ----------
 
@@ -75,7 +80,8 @@ SELECT * FROM tmp_taxi_tripdata_yellow LIMIT 20
 
 -- COMMAND ----------
 
--- MAGIC %md ##Import referencedata for location
+-- MAGIC %md 
+-- MAGIC ###The source site talked about a couple of mapping tables which are documented in a PDF and for the zones there is a CSV available.  We'll import the reference data for location
 
 -- COMMAND ----------
 
@@ -90,11 +96,12 @@ SELECT * FROM taxi_tripdata_zones LIMIT 1
 
 -- COMMAND ----------
 
--- MAGIC %md ##Import actual trip data and create view to combine all different datasets
+-- MAGIC %md 
+-- MAGIC ### Import actual trip data and create view to combine all different datasets.  The reason why we do this is because, as always, the schema and data is not stable over time.  So in order to come to a generic overview we need to reformat the data a bit.
 
 -- COMMAND ----------
 
-DROP TABLE taxi_tripdata_yellow_csv_pre2015; 
+DROP TABLE IF EXISTS taxi_tripdata_yellow_csv_pre2015; 
 
 CREATE TABLE taxi_tripdata_yellow_csv_pre2015
 USING csv
@@ -102,7 +109,7 @@ OPTIONS (path "/mnt/data/taxi/tripdata/yellow/yellow_pre2015/", header "true", i
 
 -- COMMAND ----------
 
-DROP TABLE taxi_tripdata_yellow_csv_pre2016h2;
+DROP TABLE IF EXISTS taxi_tripdata_yellow_csv_pre2016h2;
 
 CREATE TABLE taxi_tripdata_yellow_csv_pre2016h2
 USING csv
@@ -110,7 +117,7 @@ OPTIONS (path "/mnt/data/taxi/tripdata/yellow/yellow_pre2016h2/", header "true",
 
 -- COMMAND ----------
 
-DROP TABLE taxi_tripdata_yellow_csv_pre2017;
+DROP TABLE IF EXISTS taxi_tripdata_yellow_csv_pre2017;
 
 CREATE TABLE taxi_tripdata_yellow_csv_pre2017
 USING csv
@@ -118,7 +125,7 @@ OPTIONS (path "/mnt/data/taxi/tripdata/yellow/yellow_pre2017/", header "true", i
 
 -- COMMAND ----------
 
-DROP TABLE taxi_tripdata_yellow_csv_pre2018;
+DROP TABLE IF EXISTS taxi_tripdata_yellow_csv_pre2018;
 
 CREATE TABLE taxi_tripdata_yellow_csv_pre2018
 USING csv
@@ -134,7 +141,7 @@ SELECT * FROM taxi_tripdata_yellow_csv_pre2017 LIMIT 20
 
 -- COMMAND ----------
 
--- MAGIC %md #Create lookup tables
+-- MAGIC %md ###Create lookup tables for things that are described in the PDF, and of course for things that weren't described but present in the data ;-)
 
 -- COMMAND ----------
 
@@ -148,12 +155,22 @@ SELECT * FROM taxi_tripdata_yellow_csv_pre2017 LIMIT 20
 -- MAGIC vendors.write.mode("overwrite").saveAsTable("vendors")
 -- MAGIC 
 -- MAGIC val paymentTypeSeq = Seq(
--- MAGIC   (1, "Credit card"),
--- MAGIC   (2, "Cash"),
--- MAGIC   (3, "No charge"),
--- MAGIC   (4, "Dispute"),
--- MAGIC   (5, "Unknown"),
--- MAGIC   (6, "Voided trip"))
+-- MAGIC   ("1", "Credit card"),
+-- MAGIC   ("2", "Cash"),
+-- MAGIC   ("3", "No charge"),
+-- MAGIC   ("4", "Dispute"),
+-- MAGIC   ("5", "Unknown"),
+-- MAGIC   ("6", "Voided trip"),
+-- MAGIC   ("CSH", "Cash"),
+-- MAGIC   ("CASH", "Cash"),
+-- MAGIC   ("CAS", "Cash"),
+-- MAGIC   ("DIS", "Dispute"),
+-- MAGIC   ("UNK", "Unknown"),
+-- MAGIC   ("CRE", "Credit card"),
+-- MAGIC   ("CREDIT", "Credit card"),
+-- MAGIC   ("NOC", "No charge"),
+-- MAGIC   ("DISPUTE", "Dispute"),
+-- MAGIC   ("NO", "No charge"))
 -- MAGIC     
 -- MAGIC val paymentTypes = sc.makeRDD(paymentTypeSeq).toDF("Payment_Type", "PaymentType")
 -- MAGIC     
@@ -174,36 +191,6 @@ SELECT * FROM taxi_tripdata_yellow_csv_pre2017 LIMIT 20
 
 -- COMMAND ----------
 
--- MAGIC %md DROP TABLE taxi_tripdata_yellow_csv;
--- MAGIC 
--- MAGIC CREATE TABLE taxi_tripdata_yellow_csv
--- MAGIC (Vendor string,
--- MAGIC  tpep_pickup_datetime timestamp,
--- MAGIC  tpep_dropoff_datetime timestamp,
--- MAGIC  passenger_count int,
--- MAGIC  trip_distance double, 
--- MAGIC  Ratecode string,
--- MAGIC  store_and_fwd_flag string,
--- MAGIC  PULocationID int,
--- MAGIC  DOLocationID int,
--- MAGIC  pickup_longitude double,
--- MAGIC  pickup_latitude double,
--- MAGIC  dropoff_longitude double,
--- MAGIC  dropoff_latitude double,
--- MAGIC  PaymentType string,
--- MAGIC  fare_amount double,
--- MAGIC  extra double, 
--- MAGIC  mta_tax double, 
--- MAGIC  tip_amount double, 
--- MAGIC  tolls_amount double,
--- MAGIC  improvement_surcharge double,
--- MAGIC  total_amount double, 
--- MAGIC  year int, 
--- MAGIC  month int
--- MAGIC )
-
--- COMMAND ----------
-
 show partitions taxi_tripdata_yellow_csv_pre2015
 
 -- COMMAND ----------
@@ -215,7 +202,8 @@ msck repair table taxi_tripdata_yellow_csv_pre2018;
 
 -- COMMAND ----------
 
-SELECT * FROM taxi_tripdata_yellow_csv_pre2016h2 LIMIT 1
+-- MAGIC %md
+-- MAGIC ### Now we have the data and reference data we will create a unified view so we can start querying away
 
 -- COMMAND ----------
 
@@ -226,7 +214,7 @@ AS
          CAST(t.Trip_Dropoff_DateTime as timestamp),
          CAST(t.passenger_count as int),
          CAST(t.trip_distance as double),
-         r.RateCode,
+         CASE WHEN r.RateCode IS NULL THEN 'Unknown' ELSE r.RateCode END AS RateCode,
          t.store_and_forward,
          NULL AS PickupBorough,
          NULL AS PickupZone,
@@ -247,7 +235,7 @@ AS
          t.year,
          t.month
   FROM taxi_tripdata_yellow_csv_pre2015 t
-  LEFT JOIN payment_types p ON t.payment_type = p.Payment_Type
+  LEFT JOIN payment_types p ON UPPER(t.payment_type) = p.Payment_Type
   LEFT JOIN rate_codes r ON t.rate_code = r.RateCodeID
 UNION ALL
   SELECT t.VendorID,
@@ -255,7 +243,7 @@ UNION ALL
          CAST(t.tpep_dropoff_datetime AS timestamp),
          CAST(t.passenger_count as int),
          CAST(t.trip_distance as double),
-         r.RateCode,
+         CASE WHEN r.RateCode IS NULL THEN 'Unknown' ELSE r.RateCode END AS RateCode,
          t.store_and_fwd_flag,
          NULL AS PickupBorough,
          NULL AS PickupZone,
@@ -284,7 +272,7 @@ UNION ALL
          CAST(t.tpep_dropoff_datetime AS timestamp),
          CAST(t.passenger_count as int),
          CAST(t.trip_distance as double),
-         r.RateCode,
+         CASE WHEN r.RateCode IS NULL THEN 'Unknown' ELSE r.RateCode END AS RateCode,
          t.store_and_fwd_flag,
          pz.Borough,
          pz.Zone,
@@ -316,7 +304,7 @@ UNION ALL
          CAST(t.tpep_dropoff_datetime AS timestamp),
          CAST(t.passenger_count as int),
          CAST(t.trip_distance as double),
-         r.RateCode,
+         CASE WHEN r.RateCode IS NULL THEN 'Unknown' ELSE r.RateCode END AS RateCode,
          t.store_and_fwd_flag,
          pz.Borough,
          pz.Zone,
@@ -346,18 +334,12 @@ UNION ALL
 
 -- COMMAND ----------
 
+-- MAGIC %md
+-- MAGIC ### Do we have some data?
+
+-- COMMAND ----------
+
 SELECT *
-FROM taxi_tripdata_yellow_csv LIMIT 10
-
-
--- COMMAND ----------
-
-DESCRIBE taxi_tripdata_yellow_csv
-
--- COMMAND ----------
-
-show partitions taxi_tripdata_yellow_csv
-
--- COMMAND ----------
-
-DROP TABLE taxi_tripdata_yellow_csv
+FROM taxi_tripdata_yellow_csv
+WHERE year = 2009 AND month = 7 
+LIMIT 10
