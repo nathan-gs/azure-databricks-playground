@@ -11,12 +11,16 @@ GROUP BY PaymentType
 
 SELECT Year, Month, COUNT(*) 
 FROM taxi_tripdata_yellow 
+WHERE Year < 2016
 GROUP BY Year, Month
 ORDER BY Year, Month
 
 -- COMMAND ----------
 
-SELECT PaymentType, COUNT(*) FROM taxi_tripdata_yellow GROUP BY PaymentType
+SELECT PassengerCount, COUNT(*) 
+FROM taxi_tripdata_yellow 
+GROUP BY PassengerCount
+ORDER BY PassengerCount DESC
 
 -- COMMAND ----------
 
@@ -43,3 +47,14 @@ ROUND(PickupLongitude, 4),
 ROUND(PickupLatitude, 4)
   ) 
   WHERE c > 5
+
+-- COMMAND ----------
+
+SELECT AVG(FareAmount / TripDistance)
+FROM taxi_tripdata_yellow
+
+-- COMMAND ----------
+
+-- MAGIC %scala
+-- MAGIC val html = "https://msit.powerbi.com/view?r=eyJrIjoiMTk1OWMyMjgtMTgyZC00MGQ4LWEwYjEtZWQyNzI1N2FmNmMzIiwidCI6IjcyZjk4OGJmLTg2ZjEtNDFhZi05MWFiLTJkN2NkMDExZGI0NyIsImMiOjV9"
+-- MAGIC displayHTML(html)
